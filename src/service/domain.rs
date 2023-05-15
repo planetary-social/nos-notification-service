@@ -12,11 +12,13 @@ impl RelayAddress {
             return Result::Err(Into::into("empty token"));
         }
 
-        return Result::Err(Into::into("not implemented"));
+        return Ok(RelayAddress { address: s });
     }
 }
 
-pub struct Locale {}
+pub struct Locale {
+    locale: String,
+}
 
 impl Locale {
     pub fn new(s: String) -> Result<Locale, Box<dyn Error>> {
@@ -24,11 +26,12 @@ impl Locale {
             return Result::Err(Into::into("empty token"));
         }
 
-        return Result::Err(Into::into("not implemented"));
+        return Ok(Locale { locale: s });
     }
 }
 
 pub struct Registration {
+    // todo add key
     apns_token: APNSToken,
     relays: Vec<RelayAddress>,
     locale: Locale,
@@ -50,10 +53,15 @@ impl Registration {
             locale,
         });
     }
+
+    pub fn apns_token(&self) -> APNSToken {
+        return self.apns_token.clone();
+    }
 }
 
+#[derive(Clone)]
 pub struct APNSToken {
-    s: String,
+    token: String,
 }
 
 impl APNSToken {
@@ -62,7 +70,13 @@ impl APNSToken {
             return Result::Err(String::from("empty token"));
         }
 
-        return Result::Err(String::from("not implemented"));
+        return Ok(APNSToken { token: s });
+    }
+}
+
+impl Into<String> for APNSToken {
+    fn into(self) -> String {
+        return self.token;
     }
 }
 
@@ -72,8 +86,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let tk = Token::new(String::from(""));
-        match tk {
+        match APNSToken::new(String::from("")) {
             Ok(_) => panic!("constructor should have returned an error"),
             Err(error) => assert_eq!(error, String::from("empty token")),
         }
