@@ -7,10 +7,7 @@ pub struct Application<'a> {
 
 impl<'a> Application<'_> {
     pub fn new(commands: &'a Commands, queries: &'a Queries) -> Application<'a> {
-        return Application {
-            commands: commands,
-            queries: queries,
-        };
+        return Application { commands, queries };
     }
 }
 
