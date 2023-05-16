@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod common;
 
 pub struct Application<'a> {
     pub commands: &'a Commands<'a>,
