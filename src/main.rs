@@ -1,4 +1,5 @@
 mod errors;
+mod migrations;
 mod service;
 
 use crate::service::app;
