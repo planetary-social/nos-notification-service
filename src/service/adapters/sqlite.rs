@@ -7,14 +7,14 @@ use std::sync::Mutex;
 
 pub type AdaptersFactoryFn = fn(&sqlite::Connection) -> common::Adapters;
 
-pub struct TransactionProvider {
-    conn: Mutex<sqlite::Connection>,
+pub struct TransactionProvider<'a> {
+    conn: Mutex<&'a sqlite::Connection>,
     factory_fn: Box<AdaptersFactoryFn>,
 }
 
-impl<'a> TransactionProvider {
+impl<'a> TransactionProvider<'a> {
     pub fn new(
-        conn: sqlite::Connection,
+        conn: &'a sqlite::Connection,
         factory_fn: Box<AdaptersFactoryFn>,
     ) -> TransactionProvider {
         return TransactionProvider {
@@ -24,7 +24,7 @@ impl<'a> TransactionProvider {
     }
 }
 
-impl common::TransactionProvider for TransactionProvider {
+impl common::TransactionProvider for TransactionProvider<'_> {
     fn transact(&self, f: &common::TransactionFn) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
@@ -52,20 +52,29 @@ impl RegistrationRepository<'_> {
     pub fn new(conn: &sqlite::Connection) -> RegistrationRepository {
         return RegistrationRepository { conn };
     }
+
+    pub fn migrations(conn: &sqlite::Connection) -> Result<Vec<migrations::Migration>> {
+        let mut migrations  = Vec::new();
+        migrations.push(migrations::Migration::new("registration.0001_create_tables", | | -> Result<()> {
+            return Err("not implemented")?;
+        })?);
+        return Ok(migrations);
+    }
 }
 
 impl common::RegistrationRepository for RegistrationRepository<'_> {
     fn save(&self, registration: domain::Registration) -> Result<()> {
+
         return Err("not implemented")?;
     }
 }
 
-struct MigrationStatusRepository {
-    conn: sqlite::Connection,
+pub struct MigrationStatusRepository<'a> {
+    conn: &'a sqlite::Connection,
 }
 
-impl MigrationStatusRepository {
-    pub fn new(conn: sqlite::Connection) -> Result<MigrationStatusRepository> {
+impl MigrationStatusRepository<'_> {
+    pub fn new(conn: &sqlite::Connection) -> Result<MigrationStatusRepository> {
         let query = "CREATE TABLE IF NOT EXISTS migration_status (
             name TEXT,
             status TEXT,
@@ -77,7 +86,7 @@ impl MigrationStatusRepository {
     }
 }
 
-impl<'a> migrations::StatusRepository for MigrationStatusRepository {
+impl<'a> migrations::StatusRepository for MigrationStatusRepository<'_> {
     fn get_status(&self, name: &str) -> Result<Option<migrations::Status>> {
         let query = "SELECT status FROM migration_status WHERE name = :name LIMIT 1";
 
@@ -137,7 +146,6 @@ mod tests {
         use super::*;
         use crate::errors::Result;
         use crate::migrations::StatusRepository;
-        use tempfile;
 
         #[test]
         fn test_get_status_returns_none_if_repository_is_empty() -> Result<()> {

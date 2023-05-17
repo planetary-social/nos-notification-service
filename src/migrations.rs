@@ -3,13 +3,13 @@ use std::collections::HashSet;
 
 pub type MigrationFn = fn() -> Result<()>;
 
-pub struct Migration {
-    name: String,
+pub struct Migration<'a> {
+    name: &'a str,
     run_fn: MigrationFn,
 }
 
-impl Migration {
-    pub fn new(name: String, run_fn: MigrationFn) -> Result<Migration> {
+impl Migration<'_> {
+    pub fn new<'a>(name: &'a str, run_fn: MigrationFn) -> Result<Migration<'a>> {
         if name.is_empty() {
             return Err("empty name")?;
         }
@@ -17,12 +17,12 @@ impl Migration {
     }
 }
 
-pub struct Migrations {
-    migrations: Vec<Migration>,
+pub struct Migrations<'a> {
+    migrations: Vec<Migration<'a>>,
 }
 
-impl Migrations {
-    pub fn new(migrations: Vec<Migration>) -> Result<Migrations> {
+impl Migrations<'_> {
+    pub fn new<'a>(migrations: Vec<Migration<'a>>) -> Result<Migrations<'a>> {
         let mut names = HashSet::new();
 
         for migration in &migrations {
@@ -77,7 +77,7 @@ impl<T: StatusRepository> Runner<T> {
                 Err(err) => {
                     self.status_repository
                         .save_status(&migration.name, Status::Failed)?;
-                    return Err(err);
+                    return Err(From::from(format!("error running migration '{}': {}", migration.name, err)));
                 }
             }
         }
