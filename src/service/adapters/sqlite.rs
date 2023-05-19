@@ -3,84 +3,92 @@ use crate::migrations;
 use crate::service::app::common;
 use crate::service::domain;
 use sqlite;
-use std::borrow::Borrow;
+use sqlite::State;
+use std::cell::Ref;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-pub type AdaptersFactoryFn<T, A> = dyn Fn(T) -> A;
-
-pub struct TransactionProvider<'a, T, A> {
-    //conn: Mutex<T>,
-    conn: &'a T,
-    factory_fn: Box<AdaptersFactoryFn<&'a T, A>>,
+pub struct TransactionProvider {
+    conn: SqliteConnectionAdapter,
 }
 
-impl<'a, T, A> TransactionProvider<'_, T, A>
-where
-    T: SqliteConnection,
-{
-    pub fn new<TA>(
-        conn: &'a T,
-        factory_fn: Box<AdaptersFactoryFn<&'a T, A>>,
-    ) -> TransactionProvider<'a, T, A>
-    where
-        T: Borrow<TA>,
-        TA: SqliteConnection,
-    {
-        TransactionProvider {
-            //conn: Mutex::new(conn),
-            conn,
-            factory_fn,
+impl TransactionProvider {
+    pub fn new(conn: SqliteConnectionAdapter) -> TransactionProvider {
+        TransactionProvider { conn }
+    }
+
+    fn new_adapters(&self) -> common::Adapters {
+        let registrations = Box::new(RegistrationRepository::new(self.conn.clone()));
+        let events = Box::new(EventRepository::new(self.conn.clone()));
+        common::Adapters::new(registrations, events)
+    }
+}
+
+impl common::TransactionProvider for TransactionProvider {
+    fn start_transaction(&self) -> Result<Box<dyn common::Transaction>> {
+        let conn = self.conn.clone();
+
+        conn.0.borrow().execute("BEGIN TRANSACTION")?;
+
+        let adapters = self.new_adapters();
+        let t = Transaction::new(self.conn.clone(), adapters);
+        Ok(Box::new(t))
+    }
+}
+
+struct Transaction {
+    _conn: SqliteConnectionAdapter,
+    adapters: common::Adapters,
+    _commited: bool,
+}
+
+impl Transaction {
+    fn new(conn: SqliteConnectionAdapter, adapters: common::Adapters) -> Self {
+        Self {
+            _conn: conn,
+            adapters,
+            _commited: false,
         }
     }
 }
 
-impl<'a, T, A> common::TransactionProvider<A> for TransactionProvider<'a, T, A>
-where
-    T: SqliteConnection,
-{
-    fn transact(&self, f: common::TransactionFn<A>) -> Result<()> {
-        //let conn = self.conn.lock().unwrap();
+impl common::Transaction for Transaction {
+    fn adapters(&self) -> common::Adapters {
+        self.adapters.clone()
+    }
 
-        self.conn.execute("BEGIN TRANSACTION")?;
-
-        let adapters = (self.factory_fn)(self.conn);
-        match f(adapters) {
-            Ok(()) => {
-                self.conn.execute("COMMIT TRANSACTION")?;
-                Ok(())
-            }
-            Err(err) => {
-                self.conn.execute("ROLLBACK TRANSACTION")?;
-                Err(err)
-            }
-        }
+    fn commit(&self) -> Result<()> {
+        //match f(adapters) {
+        //    Ok(r) => {
+        //        self.conn.execute("COMMIT TRANSACTION")?;
+        //        Ok(r)
+        //    }
+        //    Err(err) => {
+        //        self.conn.execute("ROLLBACK TRANSACTION")?;
+        //        Err(err)
+        //    }
+        //}
+        Ok(())
     }
 }
 
-pub struct RegistrationRepository<T> {
-    conn: T,
+pub struct RegistrationRepository {
+    conn: SqliteConnectionAdapter,
 }
 
-impl<T> RegistrationRepository<T>
-where
-    T: SqliteConnection,
-{
-    pub fn new<TA>(conn: T) -> RegistrationRepository<T>
-    where
-        T: Borrow<TA>,
-        TA: SqliteConnection,
-    {
+impl RegistrationRepository {
+    pub fn new(conn: SqliteConnectionAdapter) -> RegistrationRepository {
         RegistrationRepository { conn }
     }
 }
 
-impl<T> common::RegistrationRepository for RegistrationRepository<T>
-where
-    T: SqliteConnection,
-{
-    fn save(&self, registration: domain::Registration) -> Result<()> {
+impl common::RegistrationRepository for RegistrationRepository {
+    fn save(&self, registration: &domain::Registration) -> Result<()> {
         let hex_public_key = registration.pub_key().hex();
 
-        let mut statement = self.conn.prepare(
+        let conn = self.conn.0.borrow();
+
+        let mut statement = conn.prepare(
             "INSERT OR REPLACE INTO
             registration(public_key, apns_token, locale)
             VALUES (:public_key, :apns_token, :locale)
@@ -91,14 +99,12 @@ where
         statement.bind((":locale", registration.locale().as_ref()))?;
         statement.next()?;
 
-        let mut statement = self
-            .conn
-            .prepare("DELETE FROM relays WHERE public_key=:public_key")?;
+        let mut statement = conn.prepare("DELETE FROM relays WHERE public_key=:public_key")?;
         statement.bind((":public_key", hex_public_key.as_str()))?;
         statement.next()?;
 
         for address in registration.relays() {
-            let mut statement = self.conn.prepare(
+            let mut statement = conn.prepare(
                 "INSERT INTO relays (public_key, address) VALUES (:public_key, :address)",
             )?;
             statement.bind((":public_key", hex_public_key.as_str()))?;
@@ -108,31 +114,55 @@ where
 
         Ok(())
     }
+
+    fn get_relays(&self) -> Result<Vec<domain::RelayAddress>> {
+        let conn = self.conn.0.borrow();
+        let query = "SELECT address FROM relays GROUP BY address";
+        let mut statement = conn.prepare(query)?;
+
+        let mut relay_addresses = Vec::new();
+
+        while let Ok(State::Row) = statement.next() {
+            let address_string = statement.read::<String, _>("address")?;
+            let relay_address = domain::RelayAddress::new(address_string)?;
+            relay_addresses.push(relay_address);
+        }
+
+        Ok(relay_addresses)
+    }
+
+    fn get_pub_keys(&self, address: domain::RelayAddress) -> Result<Vec<common::PubKeyInfo>> {
+        let conn = self.conn.0.borrow();
+        let query = "SELECT public_key FROM relays WHERE address = :address";
+        let mut statement = conn.prepare(query)?;
+        statement.bind((":address", address.as_ref()))?;
+
+        let mut results = Vec::new();
+
+        while let Ok(State::Row) = statement.next() {
+            let public_key_string = statement.read::<String, _>("public_key")?;
+            let pub_key = domain::PubKey::new_from_hex(public_key_string.as_ref())?;
+            let pub_key_info = common::PubKeyInfo::new(pub_key);
+            results.push(pub_key_info);
+        }
+
+        Ok(results)
+    }
 }
 
-pub struct RegistrationRepositoryMigration0001<T> {
-    conn: T,
+pub struct RegistrationRepositoryMigration0001 {
+    conn: SqliteConnectionAdapter,
 }
 
-impl<T> RegistrationRepositoryMigration0001<T>
-where
-    T: SqliteConnection,
-{
-    pub fn new<TA>(conn: T) -> RegistrationRepositoryMigration0001<T>
-    where
-        T: Borrow<TA>,
-        TA: SqliteConnection,
-    {
+impl RegistrationRepositoryMigration0001 {
+    pub fn new(conn: SqliteConnectionAdapter) -> RegistrationRepositoryMigration0001 {
         RegistrationRepositoryMigration0001 { conn }
     }
 }
 
-impl<T> migrations::MigrationCallable for RegistrationRepositoryMigration0001<T>
-where
-    T: SqliteConnection,
-{
+impl migrations::MigrationCallable for RegistrationRepositoryMigration0001 {
     fn run(&self) -> Result<()> {
-        self.conn.execute(
+        self.conn.0.borrow().execute(
             "CREATE TABLE registration (
               public_key TEXT,
               apns_token TEXT,
@@ -140,7 +170,7 @@ where
               PRIMARY KEY (public_key)
              )",
         )?;
-        self.conn.execute(
+        self.conn.0.borrow().execute(
             "CREATE TABLE relays (
               public_key TEXT,
               address TEXT,
@@ -152,65 +182,52 @@ where
     }
 }
 
-pub trait SqliteConnection {
-    fn execute<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<()>;
-    fn prepare<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<sqlite::Statement<'_>>;
+pub struct EventRepository<T> {
+    _conn: T,
 }
 
-pub struct SqliteConnectionAdapter(pub sqlite::Connection);
-
-impl SqliteConnection for SqliteConnectionAdapter {
-    fn execute<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<()> {
-        self.0.execute(statement)
-    }
-
-    fn prepare<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<sqlite::Statement<'_>> {
-        self.0.prepare(statement)
+impl<T> EventRepository<T> {
+    pub fn new(conn: T) -> EventRepository<T> {
+        EventRepository { _conn: conn }
     }
 }
 
-impl SqliteConnection for &SqliteConnectionAdapter {
-    fn execute<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<()> {
-        self.0.execute(statement)
-    }
+impl<T> common::EventRepository for EventRepository<T> {
+    fn save_event(&self) {}
+}
 
-    fn prepare<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<sqlite::Statement<'_>> {
-        self.0.prepare(statement)
+#[derive(Clone)]
+pub struct SqliteConnectionAdapter(pub Rc<RefCell<sqlite::Connection>>);
+
+impl SqliteConnectionAdapter {
+    pub fn new(conn: sqlite::Connection) -> Self {
+        Self(Rc::new(RefCell::new(conn)))
     }
 }
 
-pub struct MigrationStatusRepository<T> {
-    conn: T,
+pub struct MigrationStatusRepository {
+    conn: SqliteConnectionAdapter,
 }
 
-impl<T> MigrationStatusRepository<T>
-where
-    T: SqliteConnection,
-{
-    pub fn new<TA>(conn: T) -> Result<MigrationStatusRepository<T>>
-    where
-        T: Borrow<TA>,
-        TA: SqliteConnection,
-    {
+impl MigrationStatusRepository {
+    pub fn new(conn: SqliteConnectionAdapter) -> Result<MigrationStatusRepository> {
         let query = "CREATE TABLE IF NOT EXISTS migration_status (
             name TEXT,
             status TEXT,
             PRIMARY KEY (name)
         );";
-        conn.execute(query)?;
+        conn.0.borrow().execute(query)?;
 
         Ok(MigrationStatusRepository { conn })
     }
 }
 
-impl<T> migrations::StatusRepository for MigrationStatusRepository<T>
-where
-    T: SqliteConnection,
-{
+impl migrations::StatusRepository for MigrationStatusRepository {
     fn get_status(&self, name: &str) -> Result<Option<migrations::Status>> {
         let query = "SELECT status FROM migration_status WHERE name = :name LIMIT 1";
 
-        let mut statement = self.conn.prepare(query)?;
+        let conn: Ref<sqlite::Connection> = self.conn.0.borrow();
+        let mut statement = conn.prepare(query)?;
         statement.bind((":name", name))?;
 
         if let Ok(sqlite::State::Row) = statement.next() {
@@ -224,7 +241,8 @@ where
     fn save_status(&self, name: &str, status: migrations::Status) -> Result<()> {
         let persisted_status = status_to_persisted(&status);
 
-        let mut statement = self.conn.prepare(
+        let conn: Ref<sqlite::Connection> = self.conn.0.borrow();
+        let mut statement = conn.prepare(
             "INSERT OR REPLACE INTO
             migration_status(name, status)
             VALUES (:name, :status)
@@ -294,8 +312,30 @@ mod tests {
             Ok(())
         }
 
-        fn create_repository() -> Result<MigrationStatusRepository<SqliteConnectionAdapter>> {
+        fn create_repository() -> Result<MigrationStatusRepository> {
             return MigrationStatusRepository::new(new_sqlite()?);
+        }
+    }
+
+    #[cfg(test)]
+    mod test_transaction_provider {
+        use super::*;
+        use crate::errors::Result;
+        use crate::service::app::common::TransactionProvider as TransactionProviderTrait;
+
+        #[test]
+        fn aaa() -> Result<()> {
+            let provider = new()?;
+            let transaction = provider.start_transaction()?;
+            transaction.commit()?;
+            // todo add tests
+            Ok(())
+        }
+
+        fn new() -> Result<TransactionProvider> {
+            let adapter = new_sqlite()?;
+            let provider = TransactionProvider::new(adapter);
+            Ok(provider)
         }
     }
 
@@ -307,30 +347,60 @@ mod tests {
 
         #[test]
         fn test_save_registration() -> Result<()> {
-            let r = create_repository()?;
+            let repo = create_repository()?;
+            let registration1 = create_registration()?;
+            let registration2 = create_registration()?;
 
-            let (_sk, pk) = nostr::secp256k1::generate_keypair(&mut rand::rngs::OsRng {});
+            repo.save(&registration1)?;
+            repo.save(&registration2)?;
 
-            let pub_key = domain::PubKey::new(nostr::key::XOnlyPublicKey::from(pk));
-            let apns_token = domain::APNSToken::new(String::from("apns_token"))?;
-            let relays = vec![fixtures::some_relay_address()];
-            let locale = domain::Locale::new(String::from("some locale"))?;
+            let mut all_relays = vec![];
+            all_relays.append(&mut registration1.relays());
+            all_relays.append(&mut registration2.relays());
 
-            let registration = domain::Registration::new(pub_key, apns_token, relays, locale)?;
+            let mut retrieved_relays = repo.get_relays()?;
+            assert_eq!(retrieved_relays.sort(), all_relays.sort());
 
-            r.save(registration)?;
+            for relay in registration1.relays() {
+                let pub_keys = repo.get_pub_keys(relay)?;
+                assert_eq!(
+                    pub_keys,
+                    vec![common::PubKeyInfo::new(registration1.pub_key())]
+                );
+            }
+
+            for relay in registration2.relays() {
+                let pub_keys = repo.get_pub_keys(relay)?;
+                assert_eq!(
+                    pub_keys,
+                    vec![common::PubKeyInfo::new(registration2.pub_key())]
+                );
+            }
 
             Ok(())
         }
 
-        fn create_repository() -> Result<RegistrationRepository<SqliteConnectionAdapter>> {
+        fn create_registration() -> Result<domain::Registration> {
+            let pub_key = fixtures::some_pub_key();
+            let apns_token = fixtures::some_apns_token();
+            let locale = fixtures::some_locale();
+            let relays = vec![
+                fixtures::some_relay_address(),
+                fixtures::some_relay_address(),
+            ];
+
+            let registration = domain::Registration::new(pub_key, apns_token, relays, locale)?;
+            Ok(registration)
+        }
+
+        fn create_repository() -> Result<RegistrationRepository> {
             Ok(RegistrationRepository::new(new_sqlite()?))
         }
     }
 
     fn new_sqlite() -> Result<SqliteConnectionAdapter> {
-        let conn = SqliteConnectionAdapter(sqlite::open(":memory:")?);
-        RegistrationRepositoryMigration0001::new::<SqliteConnectionAdapter>(&conn).run()?;
+        let conn = SqliteConnectionAdapter::new(sqlite::open(":memory:")?);
+        RegistrationRepositoryMigration0001::new(conn.clone()).run()?;
         Ok(conn)
     }
 }

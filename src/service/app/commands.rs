@@ -1,3 +1,4 @@
+pub mod downloader;
 pub mod implementation;
 
 use crate::errors::Result;
