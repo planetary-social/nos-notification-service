@@ -78,8 +78,16 @@ where
     T: SqliteConnection,
 {
     fn save(&self, registration: domain::Registration) -> Result<()> {
-        let s = self.conn.prepare("INSERT INTO registration ()");
-        return Err("not implemented")?;
+        let mut statement = self.conn.prepare("INSERT OR REPLACE INTO
+            registration(public_key, apns_token, locale)
+            VALUES (:public_key, :apns_token, :locale)
+        ")?;
+        statement.bind((":public_key", registration.pub_key().hex().as_str()))?;
+        statement.bind((":apns_token", Into::<String>::into(registration.apns_token()).as_str()))?;
+        statement.bind((":locale", Into::<String>::into(registration.apns_token()).as_str()))?;
+        statement.next()?;
+
+        return Ok(());
     }
 }
 
@@ -118,9 +126,7 @@ where
 }
 
 pub trait SqliteConnection {
-    //fn execute(&self, statement: &str) -> sqlite::Result<()>;
     fn execute<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<()>;
-    //fn prepare(&self, statement: &str) -> sqlite::Result<sqlite::Statement<'_>>;
     fn prepare<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<sqlite::Statement<'_>>;
 }
 
@@ -227,6 +233,7 @@ fn status_from_persisted(status: String) -> Result<migrations::Status> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::migrations::MigrationCallable;
 
     #[cfg(test)]
     mod test_migration_status_repository {
@@ -296,7 +303,8 @@ mod tests {
     }
 
     fn new_sqlite() -> Result<SqliteConnectionAdapter> {
-        let conn = sqlite::open(":memory:")?;
-        return Ok(SqliteConnectionAdapter(conn));
+        let conn = SqliteConnectionAdapter(sqlite::open(":memory:")?);
+        RegistrationRepositoryMigration0001::new::<SqliteConnectionAdapter>(&conn).run()?;
+        return Ok(conn);
     }
 }

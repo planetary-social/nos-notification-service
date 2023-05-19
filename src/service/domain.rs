@@ -2,6 +2,7 @@ pub mod events;
 
 use crate::errors::Result;
 
+#[derive(Clone)]
 pub struct RelayAddress {
     address: String,
 }
@@ -20,6 +21,7 @@ impl RelayAddress {
     }
 }
 
+#[derive(Clone)]
 pub struct Locale {
     locale: String,
 }
@@ -34,6 +36,14 @@ impl Locale {
     }
 }
 
+impl Into<String> for Locale {
+    fn into(self) -> String {
+        return self.locale;
+    }
+}
+
+
+#[derive(Clone)]
 pub struct PubKey {
     key: nostr::key::XOnlyPublicKey,
 }
@@ -41,6 +51,10 @@ pub struct PubKey {
 impl PubKey {
     pub fn new(key: nostr::key::XOnlyPublicKey) -> Result<Self> {
         return Ok(Self { key });
+    }
+
+    pub fn hex(&self) -> String {
+        return format!("{:x?}", self.key);
     }
 }
 
@@ -68,6 +82,10 @@ impl Registration {
             relays,
             locale,
         });
+    }
+
+    pub fn pub_key(&self) -> PubKey {
+        return self.pub_key.clone();
     }
 
     pub fn apns_token(&self) -> APNSToken {
