@@ -610,6 +610,7 @@ version = "0.1.0"
 dependencies = [
  "crossbeam",
  "nostr",
+ "rand",
  "serde",
  "serde_json",
  "sqlite",
