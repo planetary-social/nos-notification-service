@@ -267,6 +267,7 @@ mod tests {
 
     #[cfg(test)]
     mod test_registration_repository {
+        use crate::fixtures;
         use super::*;
         use common::RegistrationRepository as _;
 
@@ -279,7 +280,7 @@ mod tests {
             let pub_key = domain::PubKey::new(nostr::key::XOnlyPublicKey::from(pk))?;
             let apns_token = domain::APNSToken::new(String::from("apns_token"))?;
             let mut relays = Vec::new();
-            relays.push(domain::RelayAddress::new(String::from("some_address"))?);
+            relays.push(fixtures::some_relay_address());
             let locale = domain::Locale::new(String::from("some locale"))?;
 
             let registration = domain::Registration::new(pub_key, apns_token, relays, locale)?;

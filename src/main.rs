@@ -2,6 +2,9 @@ mod errors;
 mod migrations;
 mod service;
 
+#[cfg(test)]
+mod fixtures;
+
 use crate::service::app;
 use crate::service::app::commands::implementation as commandsimpl;
 use crate::service::app::common;
