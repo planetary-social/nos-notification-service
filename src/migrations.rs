@@ -1,28 +1,39 @@
 use crate::errors::Result;
 use std::collections::HashSet;
 
-pub type MigrationFn = fn() -> Result<()>;
-
-pub struct Migration {
-    name: String,
-    run_fn: MigrationFn,
+// I give up, no idea how to make this work with closures so that I can return a closure that
+// captured something from functions and pass it to the migrations runner.
+pub trait MigrationCallable {
+    fn run(&self) -> Result<()>;
 }
 
-impl Migration {
-    pub fn new(name: String, run_fn: MigrationFn) -> Result<Migration> {
-        if name.is_empty() {
-            return Err("empty name")?;
-        }
-        return Ok(Migration { name, run_fn });
+impl<W: MigrationCallable + ?Sized> MigrationCallable for Box<W> {
+    fn run(&self) -> Result<()> {
+        return Ok(());
     }
 }
 
-pub struct Migrations {
-    migrations: Vec<Migration>,
+pub struct Migration<'a> {
+    name: &'a str,
+    callable: &'a dyn MigrationCallable,
 }
 
-impl Migrations {
-    pub fn new(migrations: Vec<Migration>) -> Result<Migrations> {
+impl Migration<'_> {
+    pub fn new<'a>(name: &'a str, callable: &'a dyn MigrationCallable) -> Result<Migration<'a>> {
+        if name.is_empty() {
+            return Err("empty name")?;
+        }
+
+        return Ok(Migration { name, callable });
+    }
+}
+
+pub struct Migrations<'a> {
+    migrations: Vec<Migration<'a>>,
+}
+
+impl Migrations<'_> {
+    pub fn new<'a>(migrations: Vec<Migration<'a>>) -> Result<Migrations<'a>> {
         let mut names = HashSet::new();
 
         for migration in &migrations {
@@ -68,7 +79,7 @@ impl<T: StatusRepository> Runner<T> {
                 None => {} // run migration
             }
 
-            match (migration.run_fn)() {
+            match migration.callable.run() {
                 Ok(_) => {
                     self.status_repository
                         .save_status(&migration.name, Status::Completed)?;
@@ -77,7 +88,10 @@ impl<T: StatusRepository> Runner<T> {
                 Err(err) => {
                     self.status_repository
                         .save_status(&migration.name, Status::Failed)?;
-                    return Err(err);
+                    return Err(From::from(format!(
+                        "error running migration '{}': {}",
+                        migration.name, err
+                    )));
                 }
             }
         }

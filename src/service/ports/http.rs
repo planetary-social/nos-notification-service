@@ -1,13 +1,10 @@
-//use std::sync::{Arc};
-use std::{error::Error, net::TcpListener};
-
 use crate::service::app;
 use crate::service::app::commands::Register;
 use crate::service::domain;
 use crate::service::domain::events;
-
 use crossbeam::thread;
 use nostr::ClientMessage;
+use std::{error::Error, net::TcpListener};
 use tungstenite;
 
 pub struct Server<'a> {
@@ -25,7 +22,6 @@ impl<'a> Server<'_> {
 
         thread::scope(|s| {
             for stream in listener.incoming() {
-                //let shared_self = Arc::new(self);
                 s.spawn(|_| {
                     let mut websocket = tungstenite::accept(stream.unwrap()).unwrap();
                     loop {
@@ -65,6 +61,7 @@ impl<'a> Server<'_> {
 
                 let registration_event_content: events::RegistrationEventContent =
                     serde_json::from_str(&event.content)?;
+                let pub_key = domain::PubKey::new(event.pubkey)?;
                 let apns_token = domain::APNSToken::new(registration_event_content.apns_token)?;
                 let relays: Result<Vec<domain::RelayAddress>, Box<dyn Error>> =
                     registration_event_content
@@ -74,7 +71,7 @@ impl<'a> Server<'_> {
                         .collect();
                 let locale = domain::Locale::new(registration_event_content.locale)?;
 
-                let registration = domain::Registration::new(apns_token, relays?, locale)?;
+                let registration = domain::Registration::new(pub_key, apns_token, relays?, locale)?;
                 let cmd = Register { registration };
                 return self.app.commands.register.handle(&cmd);
             }
