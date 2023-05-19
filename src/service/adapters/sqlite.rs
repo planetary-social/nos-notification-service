@@ -260,9 +260,8 @@ mod tests {
             return Ok(());
         }
 
-        fn create_repository<'a>() -> Result<MigrationStatusRepository<'a>> {
-            let conn = sqlite::open(":memory:")?;
-            return MigrationStatusRepository::new(&conn);
+        fn create_repository<'a>() -> Result<MigrationStatusRepository<SqliteConnectionAdapter>> {
+            return MigrationStatusRepository::new(new_sqlite()?);
         }
     }
 
@@ -270,21 +269,18 @@ mod tests {
     mod test_registration_repository {
         use super::*;
         use common::RegistrationRepository as _;
-        use nostr::secp256k1::rand::{random, thread_rng};
 
         #[test]
         fn test_save_registration() -> Result<()> {
             let r = create_repository()?;
 
-            let (sk, pk) = nostr::secp256k1::generate_keypair(&mut rand::rngs::OsRng {});
+            let (_sk, pk) = nostr::secp256k1::generate_keypair(&mut rand::rngs::OsRng {});
 
             let pub_key = domain::PubKey::new(nostr::key::XOnlyPublicKey::from(pk))?;
             let apns_token = domain::APNSToken::new(String::from("apns_token"))?;
             let mut relays = Vec::new();
             relays.push(domain::RelayAddress::new(String::from("some_address"))?);
-            let locale = domain::Locale {
-                locale: String::from("some_locale"),
-            };
+            let locale = domain::Locale::new(String::from("some locale"))?;
 
             let registration = domain::Registration::new(pub_key, apns_token, relays, locale)?;
 
@@ -293,9 +289,13 @@ mod tests {
             return Ok(());
         }
 
-        fn create_repository<'a>() -> Result<RegistrationRepository<'a>> {
-            let conn = sqlite::open(":memory:")?;
-            return Ok(RegistrationRepository::new(&conn));
+        fn create_repository<'a>() -> Result<RegistrationRepository<SqliteConnectionAdapter>> {
+            return Ok(RegistrationRepository::new(new_sqlite()?));
         }
+    }
+
+    fn new_sqlite() -> Result<SqliteConnectionAdapter> {
+        let conn = sqlite::open(":memory:")?;
+        return Ok(SqliteConnectionAdapter(conn));
     }
 }
