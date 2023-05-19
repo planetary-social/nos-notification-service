@@ -25,7 +25,7 @@ where
         T: Borrow<TA>,
         TA: SqliteConnection,
     {
-        return TransactionProvider{
+        return TransactionProvider {
             //conn: Mutex::new(conn),
             conn,
             factory_fn,
@@ -78,14 +78,39 @@ where
     T: SqliteConnection,
 {
     fn save(&self, registration: domain::Registration) -> Result<()> {
-        let mut statement = self.conn.prepare("INSERT OR REPLACE INTO
+        let hex_public_key = registration.pub_key().hex();
+
+        let mut statement = self.conn.prepare(
+            "INSERT OR REPLACE INTO
             registration(public_key, apns_token, locale)
             VALUES (:public_key, :apns_token, :locale)
-        ")?;
-        statement.bind((":public_key", registration.pub_key().hex().as_str()))?;
-        statement.bind((":apns_token", Into::<String>::into(registration.apns_token()).as_str()))?;
-        statement.bind((":locale", Into::<String>::into(registration.apns_token()).as_str()))?;
+        ",
+        )?;
+        statement.bind((":public_key", hex_public_key.as_str()))?;
+        statement.bind((
+            ":apns_token",
+            Into::<String>::into(registration.apns_token()).as_str(),
+        ))?;
+        statement.bind((
+            ":locale",
+            Into::<String>::into(registration.locale()).as_str(),
+        ))?;
         statement.next()?;
+
+        let mut statement = self
+            .conn
+            .prepare("DELETE FROM relays WHERE public_key=:public_key")?;
+        statement.bind((":public_key", hex_public_key.as_str()))?;
+        statement.next()?;
+
+        for address in registration.relays() {
+            let mut statement = self.conn.prepare(
+                "INSERT INTO relays (public_key, address) VALUES (:public_key, :address)",
+            )?;
+            statement.bind((":public_key", hex_public_key.as_str()))?;
+            statement.bind((":address", Into::<String>::into(address).as_str()))?;
+            statement.next()?;
+        }
 
         return Ok(());
     }
@@ -119,6 +144,14 @@ where
               apns_token TEXT,
               locale TEXT,
               PRIMARY KEY (public_key)
+             )",
+        )?;
+        self.conn.execute(
+            "CREATE TABLE relays (
+              public_key TEXT,
+              address TEXT,
+              PRIMARY KEY (public_key, address),
+              FOREIGN KEY (public_key) REFERENCES registration(public_key) ON DELETE CASCADE
              )",
         )?;
         return Ok(());
@@ -195,14 +228,14 @@ where
     }
 
     fn save_status(&self, name: &str, status: migrations::Status) -> Result<()> {
-        let query = "INSERT OR REPLACE INTO
-        migration_status(name, status)
-        VALUES (:name, :status)
-        ";
-
         let persisted_status = status_to_persisted(status);
 
-        let mut statement = self.conn.prepare(query)?;
+        let mut statement = self.conn.prepare(
+            "INSERT OR REPLACE INTO
+            migration_status(name, status)
+            VALUES (:name, :status)
+        ",
+        )?;
         statement.bind((":name", name))?;
         statement.bind((":status", persisted_status.as_str()))?;
         statement.next()?;
@@ -274,8 +307,8 @@ mod tests {
 
     #[cfg(test)]
     mod test_registration_repository {
-        use crate::fixtures;
         use super::*;
+        use crate::fixtures;
         use common::RegistrationRepository as _;
 
         #[test]

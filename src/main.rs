@@ -10,7 +10,7 @@ use crate::service::app::commands::implementation as commandsimpl;
 use crate::service::app::common;
 use crate::service::ports::http;
 use service::adapters::sqlite::{
-        self as sqliteadapters, SqliteConnection, SqliteConnectionAdapter,
+    self as sqliteadapters, SqliteConnection, SqliteConnectionAdapter,
 };
 use std::borrow::Borrow;
 

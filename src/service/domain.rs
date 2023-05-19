@@ -21,6 +21,12 @@ impl RelayAddress {
     }
 }
 
+impl Into<String> for RelayAddress {
+    fn into(self) -> String {
+        return self.address;
+    }
+}
+
 #[derive(Clone)]
 pub struct Locale {
     locale: String,
@@ -41,7 +47,6 @@ impl Into<String> for Locale {
         return self.locale;
     }
 }
-
 
 #[derive(Clone)]
 pub struct PubKey {
@@ -90,6 +95,14 @@ impl Registration {
 
     pub fn apns_token(&self) -> APNSToken {
         return self.apns_token.clone();
+    }
+
+    pub fn locale(&self) -> Locale {
+        return self.locale.clone();
+    }
+
+    pub fn relays(&self) -> Vec<RelayAddress> {
+        return self.relays.clone();
     }
 }
 
