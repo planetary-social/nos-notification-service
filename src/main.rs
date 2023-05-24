@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 mod errors;
 mod migrations;
 mod service;
@@ -77,14 +78,12 @@ fn new_adapters_factory_fn<T>() -> Box<sqliteadapters::AdaptersFactoryFn<T, Adap
 where
     T: SqliteConnection,
 {
-    return Box::new(
+    Box::new(
         |conn: T| -> common::Adapters<sqliteadapters::RegistrationRepository<T>> {
             let registrations = sqliteadapters::RegistrationRepository::new(conn);
-            return common::Adapters {
-                registrations: registrations,
-            };
+            common::Adapters { registrations }
         },
-    );
+    )
 }
 
 fn constrain<F, C, A>(f: F) -> F

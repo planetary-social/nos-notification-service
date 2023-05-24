@@ -25,11 +25,11 @@ where
         T: Borrow<TA>,
         TA: SqliteConnection,
     {
-        return TransactionProvider {
+        TransactionProvider {
             //conn: Mutex::new(conn),
             conn,
             factory_fn,
-        };
+        }
     }
 }
 
@@ -37,7 +37,7 @@ impl<'a, T, A> common::TransactionProvider<A> for TransactionProvider<'a, T, A>
 where
     T: SqliteConnection,
 {
-    fn transact(&self, f: &common::TransactionFn<A>) -> Result<()> {
+    fn transact(&self, f: common::TransactionFn<A>) -> Result<()> {
         //let conn = self.conn.lock().unwrap();
 
         self.conn.execute("BEGIN TRANSACTION")?;
@@ -46,11 +46,11 @@ where
         match f(adapters) {
             Ok(()) => {
                 self.conn.execute("COMMIT TRANSACTION")?;
-                return Ok(());
+                Ok(())
             }
             Err(err) => {
                 self.conn.execute("ROLLBACK TRANSACTION")?;
-                return Err(err);
+                Err(err)
             }
         }
     }
@@ -69,7 +69,7 @@ where
         T: Borrow<TA>,
         TA: SqliteConnection,
     {
-        return RegistrationRepository { conn };
+        RegistrationRepository { conn }
     }
 }
 
@@ -87,14 +87,8 @@ where
         ",
         )?;
         statement.bind((":public_key", hex_public_key.as_str()))?;
-        statement.bind((
-            ":apns_token",
-            Into::<String>::into(registration.apns_token()).as_str(),
-        ))?;
-        statement.bind((
-            ":locale",
-            Into::<String>::into(registration.locale()).as_str(),
-        ))?;
+        statement.bind((":apns_token", registration.apns_token().as_ref()))?;
+        statement.bind((":locale", registration.locale().as_ref()))?;
         statement.next()?;
 
         let mut statement = self
@@ -108,11 +102,11 @@ where
                 "INSERT INTO relays (public_key, address) VALUES (:public_key, :address)",
             )?;
             statement.bind((":public_key", hex_public_key.as_str()))?;
-            statement.bind((":address", Into::<String>::into(address).as_str()))?;
+            statement.bind((":address", address.as_ref()))?;
             statement.next()?;
         }
 
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -129,7 +123,7 @@ where
         T: Borrow<TA>,
         TA: SqliteConnection,
     {
-        return RegistrationRepositoryMigration0001 { conn };
+        RegistrationRepositoryMigration0001 { conn }
     }
 }
 
@@ -154,7 +148,7 @@ where
               FOREIGN KEY (public_key) REFERENCES registration(public_key) ON DELETE CASCADE
              )",
         )?;
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -167,21 +161,21 @@ pub struct SqliteConnectionAdapter(pub sqlite::Connection);
 
 impl SqliteConnection for SqliteConnectionAdapter {
     fn execute<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<()> {
-        return self.0.execute(statement);
+        self.0.execute(statement)
     }
 
     fn prepare<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<sqlite::Statement<'_>> {
-        return self.0.prepare(statement);
+        self.0.prepare(statement)
     }
 }
 
 impl SqliteConnection for &SqliteConnectionAdapter {
     fn execute<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<()> {
-        return self.0.execute(statement);
+        self.0.execute(statement)
     }
 
     fn prepare<T: AsRef<str>>(&self, statement: T) -> sqlite::Result<sqlite::Statement<'_>> {
-        return self.0.prepare(statement);
+        self.0.prepare(statement)
     }
 }
 
@@ -205,7 +199,7 @@ where
         );";
         conn.execute(query)?;
 
-        return Ok(MigrationStatusRepository { conn });
+        Ok(MigrationStatusRepository { conn })
     }
 }
 
@@ -219,16 +213,16 @@ where
         let mut statement = self.conn.prepare(query)?;
         statement.bind((":name", name))?;
 
-        while let Ok(sqlite::State::Row) = statement.next() {
+        if let Ok(sqlite::State::Row) = statement.next() {
             let value: String = statement.read("status")?;
-            return Ok(Some(status_from_persisted(value)?));
+            return Ok(Some(status_from_persisted(&value)?));
         }
 
-        return Ok(Option::None);
+        Ok(None)
     }
 
     fn save_status(&self, name: &str, status: migrations::Status) -> Result<()> {
-        let persisted_status = status_to_persisted(status);
+        let persisted_status = status_to_persisted(&status);
 
         let mut statement = self.conn.prepare(
             "INSERT OR REPLACE INTO
@@ -240,26 +234,26 @@ where
         statement.bind((":status", persisted_status.as_str()))?;
         statement.next()?;
 
-        return Ok(());
+        Ok(())
     }
 }
 
 const STATUS_FAILED: &str = "failed";
 const STATUS_COMPLETED: &str = "completed";
 
-fn status_to_persisted(status: migrations::Status) -> String {
-    return match status {
+fn status_to_persisted(status: &migrations::Status) -> String {
+    match status {
         migrations::Status::Failed => STATUS_FAILED,
         migrations::Status::Completed => STATUS_COMPLETED,
     }
-    .to_string();
+    .to_string()
 }
 
-fn status_from_persisted(status: String) -> Result<migrations::Status> {
+fn status_from_persisted(status: &String) -> Result<migrations::Status> {
     return match status.as_str() {
         STATUS_FAILED => Ok(migrations::Status::Failed),
         STATUS_COMPLETED => Ok(migrations::Status::Completed),
-        _ => Err(format!("unknown status: {}", status))?,
+        _ => Err(format!("unknown status: {status}"))?,
     };
 }
 
@@ -319,25 +313,24 @@ mod tests {
 
             let pub_key = domain::PubKey::new(nostr::key::XOnlyPublicKey::from(pk))?;
             let apns_token = domain::APNSToken::new(String::from("apns_token"))?;
-            let mut relays = Vec::new();
-            relays.push(fixtures::some_relay_address());
+            let relays = vec![fixtures::some_relay_address()];
             let locale = domain::Locale::new(String::from("some locale"))?;
 
             let registration = domain::Registration::new(pub_key, apns_token, relays, locale)?;
 
             r.save(registration)?;
 
-            return Ok(());
+            Ok(())
         }
 
         fn create_repository<'a>() -> Result<RegistrationRepository<SqliteConnectionAdapter>> {
-            return Ok(RegistrationRepository::new(new_sqlite()?));
+            Ok(RegistrationRepository::new(new_sqlite()?))
         }
     }
 
     fn new_sqlite() -> Result<SqliteConnectionAdapter> {
         let conn = SqliteConnectionAdapter(sqlite::open(":memory:")?);
         RegistrationRepositoryMigration0001::new::<SqliteConnectionAdapter>(&conn).run()?;
-        return Ok(conn);
+        Ok(conn)
     }
 }

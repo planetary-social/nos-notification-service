@@ -9,7 +9,7 @@ pub trait MigrationCallable {
 
 impl<W: MigrationCallable + ?Sized> MigrationCallable for Box<W> {
     fn run(&self) -> Result<()> {
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -24,7 +24,7 @@ impl Migration<'_> {
             return Err("empty name")?;
         }
 
-        return Ok(Migration { name, callable });
+        Ok(Migration { name, callable })
     }
 }
 
@@ -33,17 +33,17 @@ pub struct Migrations<'a> {
 }
 
 impl Migrations<'_> {
-    pub fn new<'a>(migrations: Vec<Migration<'a>>) -> Result<Migrations<'a>> {
+    pub fn new(migrations: Vec<Migration>) -> Result<Migrations> {
         let mut names = HashSet::new();
 
         for migration in &migrations {
             if names.contains(&migration.name) {
                 return Err("duplicate migration name")?;
             }
-            names.insert(migration.name.clone());
+            names.insert(migration.name);
         }
 
-        return Ok(Migrations { migrations });
+        Ok(Migrations { migrations })
     }
 }
 
@@ -64,30 +64,29 @@ pub struct Runner<T: StatusRepository> {
 
 impl<T: StatusRepository> Runner<T> {
     pub fn new(status_repository: T) -> Runner<T> {
-        return Runner { status_repository };
+        Runner { status_repository }
     }
 
     pub fn run(&self, migrations: &Migrations) -> Result<()> {
         for migration in &migrations.migrations {
-            let status = self.status_repository.get_status(&migration.name)?;
+            let status = self.status_repository.get_status(migration.name)?;
 
-            match status {
-                Some(status) => match status {
+            if let Some(status) = status {
+                match status {
                     Status::Completed => continue,
                     Status::Failed => {} // run migration
-                },
-                None => {} // run migration
+                }
             }
 
             match migration.callable.run() {
                 Ok(_) => {
                     self.status_repository
-                        .save_status(&migration.name, Status::Completed)?;
+                        .save_status(migration.name, Status::Completed)?;
                     continue;
                 }
                 Err(err) => {
                     self.status_repository
-                        .save_status(&migration.name, Status::Failed)?;
+                        .save_status(migration.name, Status::Failed)?;
                     return Err(From::from(format!(
                         "error running migration '{}': {}",
                         migration.name, err
@@ -96,6 +95,6 @@ impl<T: StatusRepository> Runner<T> {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 }

@@ -4,7 +4,7 @@ use crate::service::domain;
 pub type TransactionFn<A> = fn(adapters: A) -> Result<()>;
 
 pub trait TransactionProvider<A> {
-    fn transact(&self, f: &TransactionFn<A>) -> Result<()>;
+    fn transact(&self, f: TransactionFn<A>) -> Result<()>;
 }
 
 pub trait RegistrationRepository {
