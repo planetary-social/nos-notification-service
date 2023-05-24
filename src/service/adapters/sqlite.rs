@@ -311,7 +311,7 @@ mod tests {
 
             let (_sk, pk) = nostr::secp256k1::generate_keypair(&mut rand::rngs::OsRng {});
 
-            let pub_key = domain::PubKey::new(nostr::key::XOnlyPublicKey::from(pk))?;
+            let pub_key = domain::PubKey::new(nostr::key::XOnlyPublicKey::from(pk));
             let apns_token = domain::APNSToken::new(String::from("apns_token"))?;
             let relays = vec![fixtures::some_relay_address()];
             let locale = domain::Locale::new(String::from("some locale"))?;
