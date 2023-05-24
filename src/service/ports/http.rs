@@ -13,7 +13,7 @@ pub struct Server<'a> {
 
 impl<'a> Server<'_> {
     pub fn new(app: &'a app::Application) -> Server<'a> {
-        return Server { app };
+        Server { app }
     }
 
     pub fn listen_and_serve(&self) {
@@ -29,7 +29,7 @@ impl<'a> Server<'_> {
                         match self.handle_message(msg) {
                             Ok(_) => continue,
                             Err(err) => {
-                                println!("error handling the received message: {}", err);
+                                println!("error handling the received message: {err}");
                                 break;
                             }
                         };
@@ -61,7 +61,7 @@ impl<'a> Server<'_> {
 
                 let registration_event_content: events::RegistrationEventContent =
                     serde_json::from_str(&event.content)?;
-                let pub_key = domain::PubKey::new(event.pubkey)?;
+                let pub_key = domain::PubKey::new(event.pubkey);
                 let apns_token = domain::APNSToken::new(registration_event_content.apns_token)?;
                 let relays: Result<Vec<domain::RelayAddress>, Box<dyn Error>> =
                     registration_event_content
@@ -73,9 +73,9 @@ impl<'a> Server<'_> {
 
                 let registration = domain::Registration::new(pub_key, apns_token, relays?, locale)?;
                 let cmd = Register { registration };
-                return self.app.commands.register.handle(&cmd);
+                self.app.commands.register.handle(&cmd)
             }
-            _ => return Ok(()),
+            _ => Ok(()),
         }
     }
 }

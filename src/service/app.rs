@@ -8,7 +8,7 @@ pub struct Application<'a> {
 
 impl<'a> Application<'_> {
     pub fn new(commands: &'a Commands, queries: &'a Queries) -> Application<'a> {
-        return Application { commands, queries };
+        Application { commands, queries }
     }
 }
 
@@ -18,7 +18,7 @@ pub struct Commands<'a> {
 
 impl Commands<'_> {
     pub fn new(register: &(dyn commands::RegisterHandler + Sync)) -> Commands {
-        return Commands { register };
+        Commands { register }
     }
 }
 
@@ -26,6 +26,6 @@ pub struct Queries {}
 
 impl Queries {
     pub fn new() -> Queries {
-        return Queries {};
+        Queries {}
     }
 }

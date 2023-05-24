@@ -10,20 +10,20 @@ pub struct RelayAddress {
 impl RelayAddress {
     pub fn new(s: String) -> Result<RelayAddress> {
         if s.is_empty() {
-            return Result::Err(Into::into("empty token"));
+            return Err("empty token".into());
         }
 
         if !(s.starts_with("wss://") || s.starts_with("ws://")) {
-            return Result::Err(Into::into(format!("invalid relay address: '{}'", s)));
+            return Err(format!("invalid relay address: '{s}'").into());
         }
 
-        return Ok(RelayAddress { address: s });
+        Ok(RelayAddress { address: s })
     }
 }
 
-impl Into<String> for RelayAddress {
-    fn into(self) -> String {
-        return self.address;
+impl AsRef<str> for RelayAddress {
+    fn as_ref(&self) -> &str {
+        &self.address
     }
 }
 
@@ -34,17 +34,18 @@ pub struct Locale {
 
 impl Locale {
     pub fn new(s: String) -> Result<Locale> {
+        // TODO: Possible newtype, with non empty value validation
         if s.is_empty() {
-            return Result::Err(Into::into("empty token"));
+            return Err("empty token".into());
         }
 
-        return Ok(Locale { locale: s });
+        Ok(Locale { locale: s })
     }
 }
 
-impl Into<String> for Locale {
-    fn into(self) -> String {
-        return self.locale;
+impl AsRef<str> for Locale {
+    fn as_ref(&self) -> &str {
+        &self.locale
     }
 }
 
@@ -54,12 +55,12 @@ pub struct PubKey {
 }
 
 impl PubKey {
-    pub fn new(key: nostr::key::XOnlyPublicKey) -> Result<Self> {
-        return Ok(Self { key });
+    pub fn new(key: nostr::key::XOnlyPublicKey) -> Self {
+        Self { key }
     }
 
     pub fn hex(&self) -> String {
-        return format!("{:x?}", self.key);
+        format!("{:x?}", self.key)
     }
 }
 
@@ -78,31 +79,31 @@ impl Registration {
         locale: Locale,
     ) -> Result<Registration> {
         if relays.is_empty() {
-            return Result::Err(Into::into("empty relays"));
+            return Err("empty relays".into());
         }
 
-        return Ok(Registration {
+        Ok(Registration {
             pub_key,
             apns_token,
             relays,
             locale,
-        });
+        })
     }
 
     pub fn pub_key(&self) -> PubKey {
-        return self.pub_key.clone();
+        self.pub_key.clone()
     }
 
     pub fn apns_token(&self) -> APNSToken {
-        return self.apns_token.clone();
+        self.apns_token.clone()
     }
 
     pub fn locale(&self) -> Locale {
-        return self.locale.clone();
+        self.locale.clone()
     }
 
     pub fn relays(&self) -> Vec<RelayAddress> {
-        return self.relays.clone();
+        self.relays.clone()
     }
 }
 
@@ -114,16 +115,16 @@ pub struct APNSToken {
 impl APNSToken {
     pub fn new(s: String) -> Result<APNSToken> {
         if s.is_empty() {
-            return Err(String::from("empty token"))?;
+            return Err("empty token".into());
         }
 
-        return Ok(APNSToken { token: s });
+        Ok(APNSToken { token: s })
     }
 }
 
-impl Into<String> for APNSToken {
-    fn into(self) -> String {
-        return self.token;
+impl AsRef<str> for APNSToken {
+    fn as_ref(&self) -> &str {
+        &self.token
     }
 }
 
