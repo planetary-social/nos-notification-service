@@ -1,6 +1,5 @@
 use crate::app::commands;
-
-use std::error::Error;
+use crate::errors::Result;
 
 pub struct RegisterHandler {}
 
@@ -11,7 +10,7 @@ impl RegisterHandler {
 }
 
 impl commands::RegisterHandler for RegisterHandler {
-    fn handle(&self, cmd: &commands::Register) -> Result<(), Box<dyn Error>> {
+    fn handle(&self, cmd: &commands::Register) -> Result<()> {
         println!("apns_token {}", cmd.registration.apns_token().as_ref());
         Ok(())
     }
