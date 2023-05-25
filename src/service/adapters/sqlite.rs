@@ -275,7 +275,7 @@ mod tests {
             let status = r.get_status("some_name")?;
             assert!(status.is_none());
 
-            return Ok(());
+            Ok(())
         }
 
         #[test]
@@ -291,10 +291,10 @@ mod tests {
             assert!(returned_status.is_some());
             assert!(returned_status.unwrap() == migrations::Status::Completed);
 
-            return Ok(());
+            Ok(())
         }
 
-        fn create_repository<'a>() -> Result<MigrationStatusRepository<SqliteConnectionAdapter>> {
+        fn create_repository() -> Result<MigrationStatusRepository<SqliteConnectionAdapter>> {
             return MigrationStatusRepository::new(new_sqlite()?);
         }
     }
@@ -323,7 +323,7 @@ mod tests {
             Ok(())
         }
 
-        fn create_repository<'a>() -> Result<RegistrationRepository<SqliteConnectionAdapter>> {
+        fn create_repository() -> Result<RegistrationRepository<SqliteConnectionAdapter>> {
             Ok(RegistrationRepository::new(new_sqlite()?))
         }
     }
