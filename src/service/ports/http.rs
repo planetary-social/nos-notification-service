@@ -1,10 +1,11 @@
+use crate::errors::Result;
 use crate::service::app;
 use crate::service::app::commands::Register;
 use crate::service::domain;
 use crate::service::domain::events;
 use crossbeam::thread;
 use nostr::ClientMessage;
-use std::{error::Error, net::TcpListener};
+use std::net::TcpListener;
 use tungstenite;
 
 pub struct Server<'a> {
@@ -37,7 +38,7 @@ impl<'a> Server<'_> {
         .unwrap();
     }
 
-    fn handle_message(&self, msg: tungstenite::Message) -> Result<(), Box<dyn Error>> {
+    fn handle_message(&self, msg: tungstenite::Message) -> Result<()> {
         if msg.is_ping() || msg.is_pong() {
             return Ok(());
         }
@@ -53,12 +54,11 @@ impl<'a> Server<'_> {
                     serde_json::from_str(&event.content)?;
                 let pub_key = domain::PubKey::new(event.pubkey);
                 let apns_token = domain::APNSToken::new(registration_event_content.apns_token)?;
-                let relays: Result<Vec<domain::RelayAddress>, Box<dyn Error>> =
-                    registration_event_content
-                        .relays
-                        .iter()
-                        .map(|v| domain::RelayAddress::new(v.to_string()))
-                        .collect();
+                let relays: Result<Vec<domain::RelayAddress>> = registration_event_content
+                    .relays
+                    .iter()
+                    .map(|v| domain::RelayAddress::new(v.to_string()))
+                    .collect();
                 let locale = domain::Locale::new(registration_event_content.locale)?;
 
                 let registration = domain::Registration::new(pub_key, apns_token, relays?, locale)?;
