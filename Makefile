@@ -1,5 +1,5 @@
 .PHONY: ci
-ci: test build fmt check_repository_unchanged
+ci: test clippy build fmt check_repository_unchanged
 
 .PHONY: check_repository_unchanged
 check_repository_unchanged: 
@@ -16,3 +16,7 @@ fmt:
 .PHONY: test
 test:
 	cargo test
+
+.PHONY: clippy
+clippy:
+	cargo clippy -- -D warnings

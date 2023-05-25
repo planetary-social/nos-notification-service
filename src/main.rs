@@ -46,7 +46,7 @@ fn main() {
 
     let migrations = migrations::Migrations::new(migrations).unwrap();
 
-    let transaction_provider: sqliteadapters::TransactionProvider<
+    let _transaction_provider: sqliteadapters::TransactionProvider<
         sqliteadapters::SqliteConnectionAdapter,
         AdaptersImpl<&SqliteConnectionAdapter>,
     > = sqliteadapters::TransactionProvider::new(
@@ -84,11 +84,4 @@ where
             common::Adapters { registrations }
         },
     )
-}
-
-fn constrain<F, C, A>(f: F) -> F
-where
-    F: for<'a> Fn(C) -> A,
-{
-    f
 }
