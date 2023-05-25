@@ -34,7 +34,6 @@ pub struct Locale {
 
 impl Locale {
     pub fn new(s: String) -> Result<Locale> {
-        // TODO: Possible newtype, with non empty value validation
         if s.is_empty() {
             return Err("empty token".into());
         }
