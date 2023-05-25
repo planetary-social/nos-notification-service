@@ -26,13 +26,10 @@ impl<'a> Server<'_> {
                     let mut websocket = tungstenite::accept(stream.unwrap()).unwrap();
                     loop {
                         let msg = websocket.read_message().unwrap();
-                        match self.handle_message(msg) {
-                            Ok(_) => continue,
-                            Err(err) => {
-                                println!("error handling the received message: {err}");
-                                break;
-                            }
-                        };
+                        if let Err(err) = self.handle_message(msg) {
+                            println!("error handling the received message: {err}");
+                            break;
+                        }
                     }
                 });
             }
