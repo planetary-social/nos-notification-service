@@ -57,7 +57,7 @@ impl<'a> Server<'_> {
                 let relays: Result<Vec<domain::RelayAddress>> = registration_event_content
                     .relays
                     .iter()
-                    .map(|v| domain::RelayAddress::new(v.to_string()))
+                    .map(|v| domain::RelayAddress::new(v.clone()))
                     .collect();
                 let locale = domain::Locale::new(registration_event_content.locale)?;
 
