@@ -45,15 +45,8 @@ impl<'a> Server<'_> {
             return Ok(());
         }
 
-        let msg_text = match msg.into_text() {
-            Ok(value) => value,
-            Err(err) => return Err(Box::new(err)),
-        };
-
-        let client_message = match nostr::ClientMessage::from_json(msg_text) {
-            Ok(value) => value,
-            Err(err) => return Err(Box::new(err)),
-        };
+        let msg_text = msg.into_text()?;
+        let client_message = nostr::ClientMessage::from_json(msg_text)?;
 
         match client_message {
             ClientMessage::Event(event) => {
