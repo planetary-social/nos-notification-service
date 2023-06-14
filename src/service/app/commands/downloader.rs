@@ -1,16 +1,16 @@
 use crate::errors::Result;
 use crate::service::app::common;
-//use std::sync::mpsc::{channel, Sender, Receiver};
 use crate::service::domain;
 use std::collections::HashMap;
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 
-pub struct Downloader<T> {
+pub struct Downloader<'a, T> {
     transaction_provider: T,
-    relay_downloaders: HashMap<domain::RelayAddress, RelayDownloader>,
+    relay_downloaders: HashMap<domain::RelayAddress, RelayDownloader<'a>>,
 }
 
-impl<T> Downloader<T> {
+impl<'a, T> Downloader<'a, T> {
     pub fn new(transaction_provider: T) -> Self {
         Self {
             transaction_provider,
@@ -19,7 +19,7 @@ impl<T> Downloader<T> {
     }
 }
 
-impl<'a, T> Downloader<T>
+impl<'a, T> Downloader<'a, T>
 where
     T: common::TransactionProvider + Clone + Sync + Send + 'a,
 {
@@ -39,46 +39,65 @@ where
     }
 }
 
-pub struct RelayDownloader {}
+pub struct RelayDownloader<'scope> {
+    sender: SyncSender<()>,
+    handle: Option<thread::ScopedJoinHandle<'scope, ()>>,
+}
 
-impl RelayDownloader {
-    fn new<'a, 'scope, T>(
+impl<'scope> RelayDownloader<'scope> {
+    fn new<T>(
         scope: &'scope thread::Scope<'scope, '_>,
         relay: domain::RelayAddress,
         transaction_provider: T,
-    ) -> RelayDownloader
+    ) -> RelayDownloader<'scope>
     where
         T: common::TransactionProvider + Clone + Sync + Send + 'scope,
-        'scope: 'a,
     {
-        let v = Self {
-            //transaction_provider.clone(),
-            //relay.clone(),
-        };
+        let (sender, receiver) = sync_channel(0);
 
-        //let relay = relay.clone();
-        //let transaction_provider = transaction_provider.clone();
-        scope.spawn(|| {
-            RelayDownloaderRunner::new(relay, transaction_provider).run();
+        let handle = scope.spawn(|| {
+            RelayDownloaderRunner::new(relay, transaction_provider, receiver).run();
         });
 
-        v
+        Self {
+            sender,
+            handle: Some(handle),
+        }
+    }
+}
+
+impl<'scope> Drop for RelayDownloader<'scope> {
+    fn drop(&mut self) {
+        self.sender
+            .send(())
+            .expect("could not notify the thread that it is time to terminate?!");
+        self.handle
+            .take()
+            .unwrap()
+            .join()
+            .expect("thread could not be joined?!");
     }
 }
 
 pub struct RelayDownloaderRunner<T> {
     transaction_provider: T,
     relay: domain::RelayAddress,
+    receiver: Receiver<()>,
 }
 
 impl<T> RelayDownloaderRunner<T>
 where
     T: common::TransactionProvider,
 {
-    fn new(relay: domain::RelayAddress, transaction_provider: T) -> RelayDownloaderRunner<T> {
+    fn new(
+        relay: domain::RelayAddress,
+        transaction_provider: T,
+        receiver: Receiver<()>,
+    ) -> RelayDownloaderRunner<T> {
         Self {
             transaction_provider,
             relay,
+            receiver,
         }
     }
 
@@ -88,6 +107,8 @@ where
                 Ok(_) => {}
                 Err(err) => println!("error running a relay downloader: {}", err),
             }
+
+            self.receiver.recv().unwrap();
         }
     }
 
