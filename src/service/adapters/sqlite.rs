@@ -205,8 +205,9 @@ impl SqliteConnectionAdapter {
         Self(Arc::new(Mutex::new(conn)))
     }
 
-    pub fn get(&self) -> Result<MutexGuard<sqlite::Connection>>{
-        Ok(self.0.lock()?)
+    pub fn get<'a>(&'a self) -> Result<Box<MutexGuard<'a, sqlite::Connection>>>{
+        let v = self.0.lock()?;
+        Ok(Box::new(v))
     }
 }
 
