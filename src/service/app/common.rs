@@ -33,7 +33,7 @@ impl Adapters {
 pub trait RegistrationRepository {
     fn save(&self, registration: &domain::Registration) -> Result<()>;
     fn get_relays(&self) -> Result<Vec<domain::RelayAddress>>;
-    fn get_pub_keys(&self, relay: domain::RelayAddress) -> Result<Vec<PubKeyInfo>>;
+    fn get_pub_keys(&self, relay: &domain::RelayAddress) -> Result<Vec<PubKeyInfo>>;
 }
 
 pub trait EventRepository {

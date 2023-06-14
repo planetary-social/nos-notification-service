@@ -11,7 +11,7 @@ use crate::service::app::commands::implementation as commandsimpl;
 use crate::service::ports::http;
 use service::adapters::sqlite as sqliteadapters;
 use service::app::commands::downloader::Downloader;
-//use std::thread;
+use std::thread;
 
 fn main() {
     let conn = sqlite::Connection::open("/tmp/db.sqlite").unwrap();
@@ -49,13 +49,22 @@ fn main() {
 
     let server = http::Server::new(&app);
 
-    let _downloader = Downloader::new(transaction_provider);
-
     runner.run(&migrations).unwrap();
 
-    //thread::spawn(|| {
-    //    downloader.run().unwrap();
-    //});
+    thread::scope(|s| {
+        s.spawn(|| {
+            let mut downloader = Downloader::new(transaction_provider);
+            downloader.run(s).unwrap();
+        });
+
+        s.spawn(|| {
+            println!("hello from the second scoped thread");
+            // We can even mutably borrow `x` here,
+            // because no other threads are using it.
+            //x += a[0] + a[2];
+        });
+        println!("hello from the main thread");
+    });
 
     server.listen_and_serve();
 }

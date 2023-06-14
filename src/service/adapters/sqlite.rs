@@ -4,8 +4,9 @@ use crate::service::app::common;
 use crate::service::domain;
 use sqlite;
 use sqlite::State;
-use std::sync::{Arc,Mutex,MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
+#[derive(Clone)]
 pub struct TransactionProvider {
     conn: SqliteConnectionAdapter,
 }
@@ -129,7 +130,7 @@ impl common::RegistrationRepository for RegistrationRepository {
         Ok(relay_addresses)
     }
 
-    fn get_pub_keys(&self, address: domain::RelayAddress) -> Result<Vec<common::PubKeyInfo>> {
+    fn get_pub_keys(&self, address: &domain::RelayAddress) -> Result<Vec<common::PubKeyInfo>> {
         let conn = self.conn.get();
         let query = "SELECT public_key FROM relays WHERE address = :address";
         let mut statement = conn.prepare(query)?;
@@ -232,7 +233,7 @@ impl migrations::StatusRepository for MigrationStatusRepository {
     fn get_status(&self, name: &str) -> Result<Option<migrations::Status>> {
         let query = "SELECT status FROM migration_status WHERE name = :name LIMIT 1";
 
-        let conn= self.conn.get();
+        let conn = self.conn.get();
         let mut statement = conn.prepare(query)?;
 
         statement.bind((":name", name))?;
@@ -369,7 +370,7 @@ mod tests {
             assert_eq!(retrieved_relays.sort(), all_relays.sort());
 
             for relay in registration1.relays() {
-                let pub_keys = repo.get_pub_keys(relay)?;
+                let pub_keys = repo.get_pub_keys(&relay)?;
                 assert_eq!(
                     pub_keys,
                     vec![common::PubKeyInfo::new(registration1.pub_key())]
@@ -377,7 +378,7 @@ mod tests {
             }
 
             for relay in registration2.relays() {
-                let pub_keys = repo.get_pub_keys(relay)?;
+                let pub_keys = repo.get_pub_keys(&relay)?;
                 assert_eq!(
                     pub_keys,
                     vec![common::PubKeyInfo::new(registration2.pub_key())]
