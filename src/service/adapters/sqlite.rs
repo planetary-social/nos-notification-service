@@ -26,7 +26,7 @@ impl common::TransactionProvider for TransactionProvider {
     fn start_transaction(&self) -> Result<Box<dyn common::Transaction>> {
         let conn = self.conn.clone();
 
-        conn.get()?.execute("BEGIN TRANSACTION")?;
+        conn.get().execute("BEGIN TRANSACTION")?;
 
         let adapters = self.new_adapters();
         let t = Transaction::new(self.conn.clone(), adapters);
@@ -84,7 +84,7 @@ impl common::RegistrationRepository for RegistrationRepository {
     fn save(&self, registration: &domain::Registration) -> Result<()> {
         let hex_public_key = registration.pub_key().hex();
 
-        let conn = self.conn.get()?;
+        let conn = self.conn.get();
 
         let mut statement = conn.prepare(
             "INSERT OR REPLACE INTO
@@ -114,7 +114,7 @@ impl common::RegistrationRepository for RegistrationRepository {
     }
 
     fn get_relays(&self) -> Result<Vec<domain::RelayAddress>> {
-        let conn = self.conn.get()?;
+        let conn = self.conn.get();
         let query = "SELECT address FROM relays GROUP BY address";
         let mut statement = conn.prepare(query)?;
 
@@ -130,7 +130,7 @@ impl common::RegistrationRepository for RegistrationRepository {
     }
 
     fn get_pub_keys(&self, address: domain::RelayAddress) -> Result<Vec<common::PubKeyInfo>> {
-        let conn = self.conn.get()?;
+        let conn = self.conn.get();
         let query = "SELECT public_key FROM relays WHERE address = :address";
         let mut statement = conn.prepare(query)?;
         statement.bind((":address", address.as_ref()))?;
@@ -160,7 +160,7 @@ impl RegistrationRepositoryMigration0001 {
 
 impl migrations::MigrationCallable for RegistrationRepositoryMigration0001 {
     fn run(&self) -> Result<()> {
-        let conn = self.conn.get()?;
+        let conn = self.conn.get();
 
         conn.execute(
             "CREATE TABLE registration (
@@ -205,9 +205,8 @@ impl SqliteConnectionAdapter {
         Self(Arc::new(Mutex::new(conn)))
     }
 
-    pub fn get<'a>(&'a self) -> Result<Box<MutexGuard<'a, sqlite::Connection>>>{
-        let v = self.0.lock()?;
-        Ok(Box::new(v))
+    pub fn get(&self) -> MutexGuard<sqlite::Connection> {
+        self.0.lock().unwrap()
     }
 }
 
@@ -223,7 +222,7 @@ impl MigrationStatusRepository {
             PRIMARY KEY (name)
         );";
 
-        conn.get()?.execute(query)?;
+        conn.get().execute(query)?;
 
         Ok(MigrationStatusRepository { conn })
     }
@@ -233,7 +232,7 @@ impl migrations::StatusRepository for MigrationStatusRepository {
     fn get_status(&self, name: &str) -> Result<Option<migrations::Status>> {
         let query = "SELECT status FROM migration_status WHERE name = :name LIMIT 1";
 
-        let conn= self.conn.get()?;
+        let conn= self.conn.get();
         let mut statement = conn.prepare(query)?;
 
         statement.bind((":name", name))?;
@@ -249,7 +248,7 @@ impl migrations::StatusRepository for MigrationStatusRepository {
     fn save_status(&self, name: &str, status: migrations::Status) -> Result<()> {
         let persisted_status = status_to_persisted(&status);
 
-        let conn = self.conn.get()?;
+        let conn = self.conn.get();
         let mut statement = conn.prepare(
             "INSERT OR REPLACE INTO
             migration_status(name, status)
