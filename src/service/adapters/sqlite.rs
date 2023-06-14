@@ -4,9 +4,7 @@ use crate::service::app::common;
 use crate::service::domain;
 use sqlite;
 use sqlite::State;
-use std::cell::Ref;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc,Mutex,MutexGuard};
 
 pub struct TransactionProvider {
     conn: SqliteConnectionAdapter,
@@ -28,7 +26,7 @@ impl common::TransactionProvider for TransactionProvider {
     fn start_transaction(&self) -> Result<Box<dyn common::Transaction>> {
         let conn = self.conn.clone();
 
-        conn.0.borrow().execute("BEGIN TRANSACTION")?;
+        conn.get()?.execute("BEGIN TRANSACTION")?;
 
         let adapters = self.new_adapters();
         let t = Transaction::new(self.conn.clone(), adapters);
@@ -86,7 +84,7 @@ impl common::RegistrationRepository for RegistrationRepository {
     fn save(&self, registration: &domain::Registration) -> Result<()> {
         let hex_public_key = registration.pub_key().hex();
 
-        let conn = self.conn.0.borrow();
+        let conn = self.conn.get()?;
 
         let mut statement = conn.prepare(
             "INSERT OR REPLACE INTO
@@ -116,7 +114,7 @@ impl common::RegistrationRepository for RegistrationRepository {
     }
 
     fn get_relays(&self) -> Result<Vec<domain::RelayAddress>> {
-        let conn = self.conn.0.borrow();
+        let conn = self.conn.get()?;
         let query = "SELECT address FROM relays GROUP BY address";
         let mut statement = conn.prepare(query)?;
 
@@ -132,7 +130,7 @@ impl common::RegistrationRepository for RegistrationRepository {
     }
 
     fn get_pub_keys(&self, address: domain::RelayAddress) -> Result<Vec<common::PubKeyInfo>> {
-        let conn = self.conn.0.borrow();
+        let conn = self.conn.get()?;
         let query = "SELECT public_key FROM relays WHERE address = :address";
         let mut statement = conn.prepare(query)?;
         statement.bind((":address", address.as_ref()))?;
@@ -162,7 +160,9 @@ impl RegistrationRepositoryMigration0001 {
 
 impl migrations::MigrationCallable for RegistrationRepositoryMigration0001 {
     fn run(&self) -> Result<()> {
-        self.conn.0.borrow().execute(
+        let conn = self.conn.get()?;
+
+        conn.execute(
             "CREATE TABLE registration (
               public_key TEXT,
               apns_token TEXT,
@@ -170,7 +170,8 @@ impl migrations::MigrationCallable for RegistrationRepositoryMigration0001 {
               PRIMARY KEY (public_key)
              )",
         )?;
-        self.conn.0.borrow().execute(
+
+        conn.execute(
             "CREATE TABLE relays (
               public_key TEXT,
               address TEXT,
@@ -197,11 +198,15 @@ impl<T> common::EventRepository for EventRepository<T> {
 }
 
 #[derive(Clone)]
-pub struct SqliteConnectionAdapter(pub Rc<RefCell<sqlite::Connection>>);
+pub struct SqliteConnectionAdapter(Arc<Mutex<sqlite::Connection>>);
 
 impl SqliteConnectionAdapter {
     pub fn new(conn: sqlite::Connection) -> Self {
-        Self(Rc::new(RefCell::new(conn)))
+        Self(Arc::new(Mutex::new(conn)))
+    }
+
+    pub fn get(&self) -> Result<MutexGuard<sqlite::Connection>>{
+        Ok(self.0.lock()?)
     }
 }
 
@@ -216,7 +221,8 @@ impl MigrationStatusRepository {
             status TEXT,
             PRIMARY KEY (name)
         );";
-        conn.0.borrow().execute(query)?;
+
+        conn.get()?.execute(query)?;
 
         Ok(MigrationStatusRepository { conn })
     }
@@ -226,8 +232,9 @@ impl migrations::StatusRepository for MigrationStatusRepository {
     fn get_status(&self, name: &str) -> Result<Option<migrations::Status>> {
         let query = "SELECT status FROM migration_status WHERE name = :name LIMIT 1";
 
-        let conn: Ref<sqlite::Connection> = self.conn.0.borrow();
+        let conn= self.conn.get()?;
         let mut statement = conn.prepare(query)?;
+
         statement.bind((":name", name))?;
 
         if let Ok(sqlite::State::Row) = statement.next() {
@@ -241,7 +248,7 @@ impl migrations::StatusRepository for MigrationStatusRepository {
     fn save_status(&self, name: &str, status: migrations::Status) -> Result<()> {
         let persisted_status = status_to_persisted(&status);
 
-        let conn: Ref<sqlite::Connection> = self.conn.0.borrow();
+        let conn = self.conn.get()?;
         let mut statement = conn.prepare(
             "INSERT OR REPLACE INTO
             migration_status(name, status)

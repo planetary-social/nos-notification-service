@@ -11,6 +11,7 @@ use crate::service::app::commands::implementation as commandsimpl;
 use crate::service::ports::http;
 use service::adapters::sqlite as sqliteadapters;
 use service::app::commands::downloader::Downloader;
+use std::thread;
 
 fn main() {
     let conn = sqlite::Connection::open("/tmp/db.sqlite").unwrap();
@@ -51,6 +52,13 @@ fn main() {
     let _downloader = Downloader::new(transaction_provider);
 
     runner.run(&migrations).unwrap();
+
+    let downloader = Downloader::new(transaction_provider);
+
+    thread::spawn(|| {
+        downloader.run().unwrap();
+    });
+
     server.listen_and_serve();
 }
 

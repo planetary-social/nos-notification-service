@@ -18,7 +18,7 @@ impl<T> Downloader<T>
 where
     T: common::TransactionProvider,
 {
-    fn _run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         let transaction = self._transaction_provider.start_transaction()?;
 
         let adapters = transaction.adapters();
@@ -119,7 +119,7 @@ mod tests {
     fn it_works() -> Result<()> {
         let transaction_provider = TransactionProviderMock::new();
         let mut downloader = Downloader::new(transaction_provider);
-        match downloader._run() {
+        match downloader.run() {
             Ok(_) => return Err("should have failed".into()),
             Err(_) => return Ok(()),
         };
