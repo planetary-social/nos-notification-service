@@ -7,7 +7,7 @@ use std::thread;
 
 pub struct Downloader<T> {
     transaction_provider: T,
-    relay_downloaders: HashMap<domain::RelayAddress, RelayDownloader<T>>,
+    relay_downloaders: HashMap<domain::RelayAddress, RelayDownloader>,
 }
 
 impl<T> Downloader<T> {
@@ -19,11 +19,11 @@ impl<T> Downloader<T> {
     }
 }
 
-impl<T> Downloader<T>
+impl<'a, T> Downloader<T>
 where
-    T: common::TransactionProvider + Clone + Sync,
+    T: common::TransactionProvider + Clone + Sync + Send + 'a,
 {
-    pub fn run<'a>(&mut self, scope: &'a thread::Scope<'a, '_>) -> Result<()> {
+    pub fn run(&mut self, scope: &'a thread::Scope<'a, '_>) -> Result<()> {
         let transaction = self.transaction_provider.start_transaction()?;
         let adapters = transaction.adapters();
         let registrations = adapters.registrations.borrow();
@@ -39,30 +39,47 @@ where
     }
 }
 
-pub struct RelayDownloader<T> {
+pub struct RelayDownloader {}
+
+impl RelayDownloader {
+    fn new<'a, 'scope, T>(
+        scope: &'scope thread::Scope<'scope, '_>,
+        relay: domain::RelayAddress,
+        transaction_provider: T,
+    ) -> RelayDownloader
+    where
+        T: common::TransactionProvider + Clone + Sync + Send + 'scope,
+        'scope: 'a,
+    {
+        let v = Self {
+            //transaction_provider.clone(),
+            //relay.clone(),
+        };
+
+        //let relay = relay.clone();
+        //let transaction_provider = transaction_provider.clone();
+        scope.spawn(|| {
+            RelayDownloaderRunner::new(relay, transaction_provider).run();
+        });
+
+        v
+    }
+}
+
+pub struct RelayDownloaderRunner<T> {
     transaction_provider: T,
     relay: domain::RelayAddress,
 }
 
-impl<T> RelayDownloader<T>
+impl<T> RelayDownloaderRunner<T>
 where
-    T: common::TransactionProvider + Sync,
+    T: common::TransactionProvider,
 {
-    fn new<'a>(
-        scope: &'a thread::Scope<'a, '_>,
-        relay: domain::RelayAddress,
-        transaction_provider: T,
-    ) -> RelayDownloader<T> {
-        let v = Self {
+    fn new(relay: domain::RelayAddress, transaction_provider: T) -> RelayDownloaderRunner<T> {
+        Self {
             transaction_provider,
             relay,
-        };
-
-        scope.spawn(|| {
-            v.run();
-        });
-
-        v
+        }
     }
 
     fn run(&self) {
