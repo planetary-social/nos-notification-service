@@ -1,9 +1,12 @@
 use crate::errors::Result;
 use crate::service::app::common;
 use crate::service::domain;
+use nostr::message::client;
+use nostr::message::subscription;
 use std::collections::HashMap;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
+use tungstenite::Message as WsMessage;
 
 pub struct Downloader<'a, T> {
     transaction_provider: T,
@@ -112,12 +115,28 @@ where
         }
     }
 
+    // todo move nostr low-level transport code somewhere else
     fn run_with_result(&self) -> Result<()> {
         let transaction = self.transaction_provider.start_transaction()?;
         let adapters = transaction.adapters();
         let registrations = adapters.registrations.borrow();
 
-        let _pub_keys = registrations.get_pub_keys(&self.relay);
+        let (mut socket, _) = tungstenite::connect(self.relay.as_ref())?;
+
+        for pub_key_info in registrations.get_pub_keys(&self.relay)? {
+            let pub_key_hex = pub_key_info.pub_key().hex();
+            let filters = vec![subscription::Filter::new().author(pub_key_hex.clone())];
+
+            let msg = client::ClientMessage::new_req(
+                subscription::SubscriptionId::new(pub_key_hex),
+                filters,
+            )
+            .as_json();
+            socket
+                .write_message(WsMessage::Text(msg))
+                .expect("Impossible to send message");
+        }
+
         Ok(())
     }
 }

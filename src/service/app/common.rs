@@ -50,4 +50,8 @@ impl PubKeyInfo {
     pub fn new(pub_key: domain::PubKey) -> Self {
         Self { pub_key }
     }
+
+    pub fn pub_key(&self) -> &domain::PubKey {
+        &self.pub_key
+    }
 }
