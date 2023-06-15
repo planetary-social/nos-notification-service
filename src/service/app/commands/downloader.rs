@@ -5,7 +5,9 @@ use nostr::message::client;
 use nostr::message::subscription;
 use std::collections::HashMap;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::thread;
+use tungstenite::error::Error as TungsteniteError;
 use tungstenite::Message as WsMessage;
 
 pub struct Downloader<'a, T> {
@@ -59,7 +61,7 @@ impl<'scope> RelayDownloader<'scope> {
         let (sender, receiver) = sync_channel(0);
 
         let handle = scope.spawn(|| {
-            RelayDownloaderRunner::new(relay, transaction_provider, receiver).run();
+            RelayDownloaderRunner::new(relay, transaction_provider).run(receiver);
         });
 
         Self {
@@ -85,57 +87,83 @@ impl<'scope> Drop for RelayDownloader<'scope> {
 pub struct RelayDownloaderRunner<T> {
     transaction_provider: T,
     relay: domain::RelayAddress,
-    receiver: Receiver<()>,
+    //scope: &'scope thread::Scope<'scope, 'env>,
 }
 
 impl<T> RelayDownloaderRunner<T>
 where
-    T: common::TransactionProvider,
+    T: common::TransactionProvider + Sync,
 {
     fn new(
         relay: domain::RelayAddress,
         transaction_provider: T,
-        receiver: Receiver<()>,
+        //receiver: Receiver<()>,
+        //scope: &'scope thread::Scope<'scope, 'env>,
     ) -> RelayDownloaderRunner<T> {
         Self {
             transaction_provider,
             relay,
-            receiver,
+            //receiver,
+            //scope,
         }
     }
 
-    fn run(&self) {
+    fn run(&self, receiver: Receiver<()>) {
         loop {
             match self.run_with_result() {
                 Ok(_) => {}
                 Err(err) => println!("error running a relay downloader: {}", err),
             }
 
-            self.receiver.recv().unwrap();
+            receiver.recv().unwrap();
         }
     }
 
     // todo move nostr low-level transport code somewhere else
     fn run_with_result(&self) -> Result<()> {
-        let transaction = self.transaction_provider.start_transaction()?;
-        let adapters = transaction.adapters();
-        let registrations = adapters.registrations.borrow();
+        let (socket, _) = tungstenite::connect(self.relay.as_ref()).unwrap();
+        let socket = Arc::new(Mutex::new(socket));
 
-        let (mut socket, _) = tungstenite::connect(self.relay.as_ref())?;
+        thread::scope(|s| {
+            s.spawn(|| loop {
+                let mut socket = socket.lock().unwrap();
+                let msg = match socket.read_message() {
+                    Ok(msg) => msg,
+                    Err(err) => match err {
+                        TungsteniteError::ConnectionClosed => {
+                            println!("socket conn closed {}", err);
+                            break;
+                        }
+                        _ => {
+                            println!("error looping over socket {}", err);
+                            continue;
+                        }
+                    },
+                };
 
-        for pub_key_info in registrations.get_pub_keys(&self.relay)? {
-            let pub_key_hex = pub_key_info.pub_key().hex();
-            let filters = vec![subscription::Filter::new().author(pub_key_hex.clone())];
+                println!("received msg {}", msg);
+            });
 
-            let msg = client::ClientMessage::new_req(
-                subscription::SubscriptionId::new(pub_key_hex),
-                filters,
-            )
-            .as_json();
-            socket
-                .write_message(WsMessage::Text(msg))
-                .expect("Impossible to send message");
-        }
+            s.spawn(|| {
+                let transaction = self.transaction_provider.start_transaction().unwrap();
+                let adapters = transaction.adapters();
+                let registrations = adapters.registrations.borrow();
+
+                for pub_key_info in registrations.get_pub_keys(&self.relay).unwrap() {
+                    let pub_key_hex = pub_key_info.pub_key().hex();
+                    let filters = vec![subscription::Filter::new().author(pub_key_hex.clone())];
+
+                    let msg = client::ClientMessage::new_req(
+                        subscription::SubscriptionId::new(pub_key_hex),
+                        filters,
+                    )
+                    .as_json();
+
+                    let mut socket = socket.lock().unwrap();
+                    socket.write_message(WsMessage::Text(msg)).unwrap();
+                }
+            });
+        });
 
         Ok(())
     }
