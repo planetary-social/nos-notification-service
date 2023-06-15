@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time;
 use tungstenite::error::Error as TungsteniteError;
 use tungstenite::Message as WsMessage;
 
@@ -39,9 +40,9 @@ where
             self.relay_downloaders.insert(relay.clone(), v);
         }
 
-        // todo update the list in a loop
-
-        Err("not implemented".into())
+        loop {
+            thread::sleep(time::Duration::from_millis(100));
+        }
     }
 }
 

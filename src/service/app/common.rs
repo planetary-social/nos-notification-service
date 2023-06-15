@@ -3,9 +3,9 @@ use crate::service::domain;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub trait Transaction {
-    fn adapters(&self) -> Adapters;
-    fn commit(&self) -> Result<()>;
+pub trait Transaction<'a> {
+    fn adapters(&'a self) -> Rc<Adapters<'a>>;
+    fn commit(&mut self) -> Result<()>;
 }
 
 pub trait TransactionProvider {
@@ -13,16 +13,16 @@ pub trait TransactionProvider {
 }
 
 #[derive(Clone)]
-pub struct Adapters {
-    pub registrations: Rc<RefCell<Box<dyn RegistrationRepository>>>,
-    pub events: Rc<RefCell<Box<dyn EventRepository>>>,
+pub struct Adapters<'a> {
+    pub registrations: Rc<RefCell<Box<dyn RegistrationRepository + 'a>>>,
+    pub events: Rc<RefCell<Box<dyn EventRepository + 'a>>>,
 }
 
-impl Adapters {
-    pub fn new(
-        registrations: Box<dyn RegistrationRepository>,
-        events: Box<dyn EventRepository>,
-    ) -> Adapters {
+impl Adapters<'_> {
+    pub fn new<'a>(
+        registrations: Box<dyn RegistrationRepository + 'a>,
+        events: Box<dyn EventRepository + 'a>,
+    ) -> Adapters<'a> {
         Adapters {
             registrations: Rc::new(RefCell::new(registrations)),
             events: Rc::new(RefCell::new(events)),
