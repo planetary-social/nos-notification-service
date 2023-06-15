@@ -34,6 +34,7 @@ where
         let registrations = adapters.registrations.borrow();
 
         for relay in registrations.get_relays()? {
+            dbg!("looping over relay {}", relay.clone());
             let v = RelayDownloader::new(scope, relay.clone(), self.transaction_provider.clone());
             self.relay_downloaders.insert(relay.clone(), v);
         }

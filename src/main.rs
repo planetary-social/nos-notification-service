@@ -8,6 +8,8 @@ mod fixtures;
 
 use crate::service::app;
 use crate::service::app::commands::implementation as commandsimpl;
+use crate::service::app::common::TransactionProvider;
+use crate::service::domain;
 use crate::service::ports::http;
 use service::adapters::sqlite as sqliteadapters;
 use service::app::commands::downloader::Downloader;
@@ -50,6 +52,28 @@ fn main() {
     let server = http::Server::new(&app);
 
     runner.run(&migrations).unwrap();
+
+    // todo remove!
+    {
+        let pk = domain::PubKey::new_from_hex(
+            "e731ca427c18059d66636ddfaeeeb15012bc2db3cdd27b9e4cade5057a6e82ed",
+        )
+        .unwrap();
+
+        let r = domain::Registration::new(
+            pk,
+            domain::APNSToken::new(String::from("a")).unwrap(),
+            vec![domain::RelayAddress::new(String::from("wss://relay.damus.io")).unwrap()],
+            domain::Locale::new(String::from("en")).unwrap(),
+        )
+        .unwrap();
+
+        let transaction = transaction_provider.start_transaction().unwrap();
+        let adapters = transaction.adapters();
+        let registrations = adapters.registrations.borrow();
+        registrations.save(&r).unwrap();
+        transaction.commit().unwrap();
+    }
 
     thread::scope(|s| {
         s.spawn(|| {
