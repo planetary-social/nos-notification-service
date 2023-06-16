@@ -8,13 +8,16 @@ mod fixtures;
 
 use crate::service::app;
 use crate::service::app::commands::implementation as commandsimpl;
+use crate::service::app::common::TransactionProvider;
+use crate::service::domain;
 use crate::service::ports::http;
 use service::adapters::sqlite as sqliteadapters;
 use service::app::commands::downloader::Downloader;
+use std::thread;
 
 fn main() {
     let conn = sqlite::Connection::open("/tmp/db.sqlite").unwrap();
-    let conn_adapter = sqliteadapters::SqliteConnectionAdapter::new(conn);
+    let conn_pool = sqliteadapters::SqliteConnectionPool::new(conn);
 
     //let adapters_factory_fn = new_adapters_factory_fn();
 
@@ -22,7 +25,7 @@ fn main() {
 
     // no idea how to make a factory function for this without ownership errors
     let migration_registration_0001_create_tables =
-        sqliteadapters::RegistrationRepositoryMigration0001::new(conn_adapter.clone());
+        sqliteadapters::RegistrationRepositoryMigration0001::new(conn_pool.clone());
 
     migrations.push(
         migrations::Migration::new(
@@ -34,7 +37,7 @@ fn main() {
 
     let migrations = migrations::Migrations::new(migrations).unwrap();
 
-    let transaction_provider = sqliteadapters::TransactionProvider::new(conn_adapter.clone());
+    let transaction_provider = sqliteadapters::TransactionProvider::new(conn_pool.clone());
 
     let register = commandsimpl::RegisterHandler::new();
 
@@ -43,14 +46,52 @@ fn main() {
     let app = app::Application::new(&commands, &queries);
 
     let migration_status_repository =
-        sqliteadapters::MigrationStatusRepository::new(conn_adapter).unwrap();
+        sqliteadapters::MigrationStatusRepository::new(conn_pool).unwrap();
     let runner = migrations::Runner::new(migration_status_repository);
 
     let server = http::Server::new(&app);
 
-    let _downloader = Downloader::new(transaction_provider);
-
     runner.run(&migrations).unwrap();
+
+    // todo remove!
+    {
+        let pk = domain::PubKey::new_from_hex(
+            "e731ca427c18059d66636ddfaeeeb15012bc2db3cdd27b9e4cade5057a6e82ed",
+        )
+        .unwrap();
+
+        let r = domain::Registration::new(
+            pk,
+            domain::APNSToken::new(String::from("a")).unwrap(),
+            vec![domain::RelayAddress::new(String::from("wss://relay.damus.io")).unwrap()],
+            domain::Locale::new(String::from("en")).unwrap(),
+        )
+        .unwrap();
+
+        let mut transaction = transaction_provider.start_transaction().unwrap();
+        {
+            let adapters = transaction.adapters();
+            let registrations = adapters.registrations.borrow();
+            registrations.save(&r).unwrap();
+        }
+        transaction.commit().unwrap();
+    }
+
+    thread::scope(|s| {
+        s.spawn(|| {
+            let mut downloader = Downloader::new(transaction_provider);
+            downloader.run(s).unwrap();
+        });
+
+        s.spawn(|| {
+            println!("hello from the second scoped thread");
+            // We can even mutably borrow `x` here,
+            // because no other threads are using it.
+            //x += a[0] + a[2];
+        });
+        println!("hello from the main thread");
+    });
+
     server.listen_and_serve();
 }
 

@@ -20,3 +20,7 @@ test:
 .PHONY: clippy
 clippy:
 	cargo clippy -- -D warnings
+
+.PHONY: run
+run:
+	cargo run
