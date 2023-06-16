@@ -4,12 +4,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub trait Transaction<'a> {
-    fn adapters(&'a self) -> Rc<Adapters<'a>>;
+    fn adapters(&self) -> Rc<Adapters<'a>>;
     fn commit(&mut self) -> Result<()>;
 }
 
 pub trait TransactionProvider {
-    fn start_transaction(&self) -> Result<Box<dyn Transaction>>;
+    fn start_transaction<'a>(&'a self) -> Result<Box<dyn Transaction + 'a>>;
 }
 
 #[derive(Clone)]
